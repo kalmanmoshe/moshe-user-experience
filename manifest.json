@@ -1,0 +1,9 @@
+{
+	"id": "moshe-user-experience",
+	"name": "moshe user experience",
+	"version": "1.0.0-beta",
+	"minAppVersion": "1.0.0",
+	"description": "Improve the user experience of Obsidian through various enhancements",
+	"author": "moshe",
+	"isDesktopOnly": false
+}
