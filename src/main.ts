@@ -7,14 +7,14 @@ export default class MosheUserExperience extends Plugin{
     settings: MosheUserExperienceSettings;
     editorExtensions: Extension[]=[];
     async onload(){
-        console.log('Moshe User Experience loaded');
+        console.log("Moshe User Experience loaded");
         await this.loadSettings();
+        //@ts-ignore
+        const plugins = this.app.plugins
+        console.log(plugins)
         try{
-            this.app.workspace.onLayoutReady(() => {
-                console.log(this.app.workspace.getLayout())
-            })
             this.app.workspace.on("layout-change", () => {
-                
+                console.log("Layout changed")
             });
         }
         catch(e){
