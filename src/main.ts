@@ -2,28 +2,34 @@ import { Plugin } from "obsidian";
 import { DEFAULT_SETTINGS, MosheUserExperienceSettings } from "./obsidian/settings";
 import { EditorSelection, Extension, Prec } from "@codemirror/state";
 import { EditorView, ViewUpdate } from "@codemirror/view";
+import { RememberCursorPosition } from "./rememberCursorPosition";
 
 export default class MosheUserExperience extends Plugin{
     settings: MosheUserExperienceSettings;
     editorExtensions: Extension[]=[];
+    extensions: Map<string, RememberCursorPosition>;
     async onload(){
         console.log("Moshe User Experience loaded");
+        this.initializeExtensions();
         await this.loadSettings();
-        //@ts-ignore
-        const plugins = this.app.plugins
-        console.log(plugins)
         try{
             this.app.workspace.on("layout-change", () => {
-                console.log("Layout changed")
+                //console.log("Layout changed", this.app.workspace.getLayout());
             });
         }
         catch(e){
             console.log(e);
         }
     }
+    initializeExtensions(){
+        this.extensions =new Map([
+            ["rememberCursorPosition", new RememberCursorPosition(this)]
+        ]);
+    }
     private async loadSettings() {
         const data = await this.loadData();
         this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+        await this.saveData(this.settings);
         this.app.workspace.onLayoutReady(() => {
             this.updateEditorExtensions();
         });
@@ -34,9 +40,7 @@ export default class MosheUserExperience extends Plugin{
     }
 
     private setEditorExtensions() {
-        console.log("editor extensions before:", this.editorExtensions);
 		while (this.editorExtensions.length) this.editorExtensions.pop();
-		console.log("editor extensions after:", this.editorExtensions);
 		this.editorExtensions.push([
 			Prec.lowest([
                 EditorView.updateListener.of((update: ViewUpdate) => {
@@ -53,21 +57,11 @@ export default class MosheUserExperience extends Plugin{
 		this.registerEditorExtension(this.editorExtensions.flat());
 	}
     private handleEditorViewUpdate(update: ViewUpdate) {        
-        if(!update.selectionSet) return;
-        const selectionsEqual = (selection1: EditorSelection, selection2: EditorSelection) => {
-            return selection1.ranges.length===selection2.ranges.length&&
-            selection1.ranges.every((range,index) => range.from==selection2.ranges[index].from&&range.to==selection2.ranges[index].to);
-        }
-        if(selectionsEqual(update.state.selection, update.startState.selection)) return;
-        const cursor = update.state.selection.main.head;
-        console.log("Cursor moved to pos:", cursor);
+        this.extensions.get("rememberCursorPosition")?.handleEditorViewUpdate(update);
     }
+
     private handleEditorViewScroll(event: Event, view: EditorView) {
-        const scrollEl = view.scrollDOM;
-        const scrollTop = scrollEl.scrollTop;
-        const scrollHeight = scrollEl.scrollHeight - scrollEl.clientHeight;
-        const scrollRatio = scrollTop / scrollHeight;
-        console.log("Scroll changed:", scrollRatio.toFixed(4));
+        this.extensions.get("rememberCursorPosition")?.handleEditorViewScroll(event, view);
     }
 }
 
