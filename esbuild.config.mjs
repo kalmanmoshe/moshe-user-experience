@@ -15,7 +15,11 @@ const args = {
 	banner: {
 		js: banner,
 	},
-	entryPoints: ["src/main.ts"],
+	loader: {".css": "css"},
+	entryPoints: {
+		"main": "./src/main.ts",
+		"styles": "./src/styles.css",
+	},
 	bundle: true,
 	external: [
 		"obsidian",
@@ -48,7 +52,9 @@ const args = {
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
-	outfile: "main.js",
+	outdir: ".",
+	entryNames: "[name]",
+	assetNames: "[name]",
 	plugins: [
 		inlineImportPlugin()
 	]

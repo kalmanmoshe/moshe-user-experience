@@ -3,27 +3,21 @@ import { DEFAULT_SETTINGS, MosheUserExperienceSettings } from "./obsidian/settin
 import { EditorSelection, Extension, Prec } from "@codemirror/state";
 import { EditorView, ViewUpdate } from "@codemirror/view";
 import { RememberCursorPosition } from "./rememberCursorPosition";
+import { arrayToMap } from "./utils/types";
 
 export default class MosheUserExperience extends Plugin{
     settings: MosheUserExperienceSettings;
     editorExtensions: Extension[]=[];
-    extensions: Map<string, RememberCursorPosition>;
+    extensions: Map<string, RememberCursorPosition>=new Map();
     async onload(){
         console.log("Moshe User Experience loaded");
-        this.initializeExtensions();
         await this.loadSettings();
-        try{
-            this.app.workspace.on("layout-change", () => {
-                //console.log("Layout changed", this.app.workspace.getLayout());
-            });
-        }
-        catch(e){
-            console.log(e);
-        }
+        this.initializeExtensions();
     }
+    
     initializeExtensions(){
         this.extensions =new Map([
-            ["rememberCursorPosition", new RememberCursorPosition(this)]
+            ["rememberCursorPosition", new RememberCursorPosition(this,arrayToMap(this.settings.rememberCursorPosition.EphemeralState))]
         ]);
     }
     private async loadSettings() {

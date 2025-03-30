@@ -1,9 +1,11 @@
 
-import { App, Plugin, PluginSettingTab, Setting, MarkdownView, TAbstractFile, Editor } from "obsidian";
 import MosheUserExperience from "./main";
-import { EditorView } from "codemirror";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { EditorState } from "@codemirror/state";
 import { ViewUpdate } from "@codemirror/view";
+import { mapToArray, mapToJson } from "./utils/types";
+import { EditorPosition, MarkdownView } from "obsidian";
+import { EditorView} from "@codemirror/view";
+import { EditorSelection } from "@codemirror/state";
 
 export type Cursor = { from: number, to: number }
 
@@ -17,17 +19,7 @@ function scrollFromView(view: EditorView) {
 	const scrollHeight = scrollEl.scrollHeight - scrollEl.clientHeight;
 	return scrollTop / scrollHeight;
 }
-
-class EphemeralState {
-	private cursor?: Cursor;
-	private scroll?: number;
-	constructor(cursor?: Cursor, scroll?: number) {
-		this.cursor = cursor;
-		this.scroll = scroll;
-	}
-	setCursor(cursor: Cursor) {this.cursor = cursor}
-	setScroll(scroll: number) {this.scroll = scroll}
-}
+export type EphemeralState = { cursor: Cursor, scroll: number };
 enum LayoutType {
 	split,
 }
@@ -51,56 +43,40 @@ export class RememberCursorPosition {
 	//layout: 
 	lastSavedDb: { [file_path: string]: EphemeralState };
 	lastEphemeralState: EphemeralState;
-	lastLoadedFileName: string;
 	loadedLeafIdList: string[] = [];
 	loadingFile = false;
 	outdated: boolean;
-	constructor(plugin: MosheUserExperience) {
+	interval: EventBasedInterval;
+	constructor(plugin: MosheUserExperience,db?: Map<string, EphemeralState>) {
 		this.plugin = plugin;
-		this.db = new Map();
-		this.registerVaultEvents();
-	}
-	async onload() {
-		try {
-			//this.db = await this.readDb();
-			//this.lastSavedDb = await this.readDb();
-		} catch (e) {
-			console.error(
-				"Remember Cursor Position plugin can't read database: " + e
-			);
-			this.db = new Map();
-			this.lastSavedDb = {};
-		}
-		this.plugin.registerInterval(
-			window.setInterval(() => this.writeDb(), this.plugin.settings.saveTimer)
-		);
+		this.db = db||new Map();
+		this.interval = new EventBasedInterval(() => this.writeDb(), {});
+		this.plugin.app.workspace.onLayoutReady(() => {
+			this.restoreEphemeralState();
+			this.registerVaultEvents();
+		})
 	}
     private registerVaultEvents(){
         const vaultEvents: { [key: string]: (...args: any) => void } = {
             "rename": this.renameFile.bind(this),
             "delete": this.deleteFile.bind(this),
             "file-open": this.restoreEphemeralState.bind(this),
-            "quit": () => { this.writeDb(); }
+            "quit": () => { this.interval.trigger(); }
         };
         for (const [eventName, callback] of Object.entries(vaultEvents)) {
             //@ts-expect-error
             const eventRef = this.plugin.app.vault.on(eventName, callback);
             this.plugin.registerEvent(eventRef);
         }
-
-        this.restoreEphemeralState();
-	}
-	private registerWriteDbInterva() {
-		this.plugin.registerInterval(
-			window.setInterval(() => this.writeDb(), this.plugin.settings.saveTimer)
-		);
 	}
 	renameFile(newPath: string, oldPath: string) {
 		this.db.set(newPath, this.db.get(oldPath))
 		this.db.delete(oldPath)
+		this.interval.trigger();
 	}
 	deleteFile(filePath: string) {
 		this.db.has(filePath) && this.db.delete(filePath);
+		this.interval.trigger();
 	}
 	private cursorSelectionsEqual(selection1: EditorSelection, selection2: EditorSelection): boolean {
 		const ranges1 = selection1.ranges;
@@ -120,78 +96,81 @@ export class RememberCursorPosition {
 		if(!update.selectionSet) return;
         if(this.cursorSelectionsEqual(update.state.selection, update.startState.selection)) return;
 		const path = this.activeFilePath();
-		const state = new EphemeralState(
-			stateSelectionToCursor(update.state.selection),
-			scrollFromView(update.view)
-		);
+		const state = {
+			cursor: stateSelectionToCursor(update.state.selection),
+			scroll: scrollFromView(update.view)
+		};
 		this.updateEphemeralState(path, state);
-		console.log("update", this.db);
+		this.interval.trigger();
 	}
 	handleEditorViewScroll(event: Event, view: EditorView) {
 		const path = this.activeFilePath();
 		if (!this.db.has(path)) return this.addEntryFromView(path, view);
 		const state = this.db.get(path);
 		const scrollRatio = scrollFromView(view);
-		state.setScroll(scrollRatio);
-		console.log("update", this.db);
+		state.scroll=scrollRatio;
+		this.interval.trigger();
 	}
 	addEntryFromView(path: string,view: EditorView) {
-		const state = new EphemeralState(
-			stateSelectionToCursor(view.state.selection),
-			scrollFromView(view)
-		);
+		const state = {
+			cursor: stateSelectionToCursor(view.state.selection),
+			scroll: scrollFromView(view)
+		}
 		this.updateEphemeralState(path, state);
 	}
-
-	async saveEphemeralState(st: EphemeralState) {
-		const fileName = this.plugin.app.workspace.getActiveFile()?.path;
-		if (fileName && fileName == this.lastLoadedFileName) { //do not save if file changed or was not loaded
-			//this.db[fileName] = st;
-		}
-	}
-
 	
 	async restoreEphemeralState() {
 		const fileName = this.plugin.app.workspace.getActiveFile()?.path;
-
-		if (fileName && this.loadingFile && this.lastLoadedFileName == fileName) //if already started loading
-			return;
-		
+		if (!fileName) return;
 		const activeLeaf = this.plugin.app.workspace.getMostRecentLeaf()
 		//@ts-expect-error
 		if (activeLeaf && this.loadedLeafIdList.includes(activeLeaf.id + ":" + activeLeaf.getViewState().state.file))
 			return;
-
-		
 		this.loadingFile = true;
+		const st:EphemeralState = this.db.get(fileName);
+		console.log("Restoring cursor position for file: ", fileName, st);
+		if (st) {
+			// Don't scroll when a link scrolls and highlights text
+			// i.e. if file is open by links like [link](note.md#header) and wikilinks
+			// See #10, #32, #46, #51
+			const containsFlashingSpan = this.plugin.app.workspace.containerEl.querySelector("span.is-flashing");
 
-		if (this.lastLoadedFileName != fileName) {
-			this.lastLoadedFileName = fileName;
-			
-			let st:EphemeralState
-			if (fileName) {
-				st = this.db.get(fileName);
-				if (st) {
-
-					// Don't scroll when a link scrolls and highlights text
-					// i.e. if file is open by links like [link](note.md#header) and wikilinks
-					// See #10, #32, #46, #51
-					const containsFlashingSpan = this.plugin.app.workspace.containerEl.querySelector("span.is-flashing");
-
-					if (!containsFlashingSpan) {
-						await this.delay(10);
-					}
-				}
-			} 
-			this.lastEphemeralState = st;
+			if (!containsFlashingSpan) {
+				await this.delay(10);
+				this.setEphemeralState(st);
+			}
 		}
+		this.lastEphemeralState = st;
 
 		this.loadingFile = false;
 	}
+	setEphemeralState(state: EphemeralState) {
+		//@ts-expect-error
+		const view = (app.workspace.activeEditor?.editor as any).cm as EditorView;
+		if (!view) return;
+		view.dispatch({
+			selection: EditorSelection.range(state.cursor.from, state.cursor.to),
+			scrollIntoView: true,
+		});
+		console.log("Setting cursor position for file: ", view);
+		/*
+		if (state.cursor) {
+			const editor = view?.editor;
+			if (editor) {
+				const from: EditorPosition= {  };
+				editor.setSelection(from, state.cursor.to);
+			}
+		}
 
+		if (view && state.scroll) {
+			view.setEphemeralState(state);
+			// view.previewMode.applyScroll(state.scroll);
+			// view.sourceMode.applyScroll(state.scroll);
+		}*/
+	}
 	private async writeDb() {
-		const data = await this.plugin.loadData() || {};
-		data["rememberCursorPosition"] = this.db;
+		const data:typeof this.plugin.settings = await this.plugin.loadData() || {};
+		data.rememberCursorPosition = {EphemeralState: mapToArray<string,EphemeralState>(this.db), windowLayout: null};
 		await this.plugin.saveData(data);
 	}
 	async delay(ms: number) {
@@ -201,7 +180,59 @@ export class RememberCursorPosition {
 
 
 
+class EventBasedInterval {
+	INTERVAL_DELAY = 4000;
+	IDLE_TIMEOUT = 10000;
+	lastEvent = 0;
+	intervalId: number | null = null;
+	job?: unknown;
+	outdated = false;
+	action: (eventData?: unknown) => void;
 
+	constructor(action: (eventData?: unknown) => void, config: { INTERVAL_DELAY?: number; IDLE_TIMEOUT?: number } = {}) {
+		this.action = action;
+		if (config.INTERVAL_DELAY) this.INTERVAL_DELAY = config.INTERVAL_DELAY;
+		if (config.IDLE_TIMEOUT) this.IDLE_TIMEOUT = config.IDLE_TIMEOUT;
+	}
+
+	trigger(eventData?: unknown) {
+		this.lastEvent = Date.now();
+		this.outdated = true;
+		this.job = eventData;
+
+		if (this.intervalId === null) {
+			this.intervalId = window.setInterval(() => this.tick(), this.INTERVAL_DELAY);
+		}
+	}
+
+	private tick() {
+		if (!this.outdated) return;
+
+		const now = Date.now();
+		const isIdle = now - this.lastEvent > this.IDLE_TIMEOUT;
+
+		if (isIdle) {
+			this.clear();
+			return;
+		}
+
+		this.action(this.job);
+		this.job = undefined;
+		this.outdated = false;
+	}
+
+	clear() {
+		if (this.intervalId !== null) {
+			clearInterval(this.intervalId);
+			this.intervalId = null;
+			this.job = undefined;
+		}
+	}
+
+	isRunning(): boolean {
+		return this.intervalId !== null;
+	}
+}
 
 
 

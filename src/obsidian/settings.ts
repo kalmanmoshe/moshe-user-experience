@@ -1,11 +1,11 @@
-import { Cursor, WindowLayout } from "src/rememberCursorPosition";
+import { EphemeralState, WindowLayout } from "src/rememberCursorPosition";
 
 
 export interface MosheUserExperienceSettings{
 	delayAfterFileOpening: 100,
 	saveTimer: 5000,
 	rememberCursorPosition:
-		{ EphemeralState: Array<[string,Cursor]>, windowLayout: WindowLayout }
+		{ EphemeralState: Array<[string,EphemeralState]>, windowLayout: WindowLayout }
 }
 export const DEFAULT_SETTINGS: MosheUserExperienceSettings = {
 	delayAfterFileOpening: 100,
