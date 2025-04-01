@@ -2,16 +2,25 @@
 import MosheUserExperience from "./main";
 import { EditorState } from "@codemirror/state";
 import { ViewUpdate } from "@codemirror/view";
-import { mapToArray, mapToJson } from "./utils/types";
-import { EditorPosition, MarkdownView } from "obsidian";
+import { mapToArray,  } from "./utils/types";
 import { EditorView} from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
+import { MarkdownView, TFile, WorkspaceLeaf } from "obsidian";
+import { kill } from "process";
 
-export type Cursor = { from: number, to: number }
+export type Cursor = { 
+	from: {ch: number,line: number}, 
+	to: {ch: number,line: number}
+};
 
-function stateSelectionToCursor(selection: typeof EditorState.prototype.selection): Cursor {
-	const cursor = selection.main;
-	return { from: cursor.from, to: cursor.to}
+function stateSelectionToCursor(view: EditorView): Cursor {
+	const cursor = view.state.selection.main;
+	const from = view.state.doc.lineAt(cursor.from);
+	const to = view.state.doc.lineAt(cursor.to);
+	return {
+		from: { line: from.number - 1, ch: cursor.from - from.from },
+		to: { line: to.number - 1, ch: cursor.to - to.from },
+	};
 }
 function scrollFromView(view: EditorView) {
 	const scrollEl = view.scrollDOM;
@@ -19,7 +28,8 @@ function scrollFromView(view: EditorView) {
 	const scrollHeight = scrollEl.scrollHeight - scrollEl.clientHeight;
 	return scrollTop / scrollHeight;
 }
-export type EphemeralState = { cursor: Cursor, scroll: number };
+export type EphemeralState = { cursor?: Cursor, scroll?: number };
+
 enum LayoutType {
 	split,
 }
@@ -47,6 +57,7 @@ export class RememberCursorPosition {
 	loadingFile = false;
 	outdated: boolean;
 	interval: EventBasedInterval;
+	lastLoadedFileName: string | null = null;
 	constructor(plugin: MosheUserExperience,db?: Map<string, EphemeralState>) {
 		this.plugin = plugin;
 		this.db = db||new Map();
@@ -54,14 +65,13 @@ export class RememberCursorPosition {
 		this.plugin.app.workspace.onLayoutReady(() => {
 			this.restoreEphemeralState();
 			this.registerVaultEvents();
+			this.registerWorkspaceEvents();
 		})
 	}
     private registerVaultEvents(){
         const vaultEvents: { [key: string]: (...args: any) => void } = {
             "rename": this.renameFile.bind(this),
             "delete": this.deleteFile.bind(this),
-            "file-open": this.restoreEphemeralState.bind(this),
-            "quit": () => { this.interval.trigger(); }
         };
         for (const [eventName, callback] of Object.entries(vaultEvents)) {
             //@ts-expect-error
@@ -69,12 +79,23 @@ export class RememberCursorPosition {
             this.plugin.registerEvent(eventRef);
         }
 	}
-	renameFile(newPath: string, oldPath: string) {
+	private registerWorkspaceEvents(){
+        const vaultEvents: { [key: string]: (...args: any) => void } = {
+            "file-open": this.restoreEphemeralState.bind(this),
+            "quit": () => { this.interval.trigger(); }
+        };
+        for (const [eventName, callback] of Object.entries(vaultEvents)) {
+            //@ts-expect-error
+            const eventRef = this.plugin.app.workspace.on(eventName, callback);
+            this.plugin.registerEvent(eventRef);
+        }
+	}
+	private renameFile(newPath: string, oldPath: string) {
 		this.db.set(newPath, this.db.get(oldPath))
 		this.db.delete(oldPath)
 		this.interval.trigger();
 	}
-	deleteFile(filePath: string) {
+	private deleteFile(filePath: string) {
 		this.db.has(filePath) && this.db.delete(filePath);
 		this.interval.trigger();
 	}
@@ -84,89 +105,122 @@ export class RememberCursorPosition {
 		return ranges1.length===ranges2.length&&
             ranges1.every((range,index) => range.from==ranges2[index].from&&range.to==ranges2[index].to);
 	}
-	updateEphemeralState(path: string, state: EphemeralState) {
-		this.db.set(path, state);
+	private updateEphemeralState(path: string, state: EphemeralState) {
+		const obj = this.db.get(path);
+		if (obj) {
+			if ("cursor" in state) obj.cursor = state.cursor;
+			if ("scroll" in state) obj.scroll = state.scroll;
+		}
+		console.log("updateEphemeralState", path, obj);
+		this.db.set(path, obj||state);
 	}
-	activeFilePath() {
+	private activeFilePath() {
 		const path = this.plugin.app.workspace.getActiveFile()?.path;
 		if (!path) throw new Error("No active file");
 		return path;
 	}
+	/**
+	 * Filters out view updates triggered when a new file is opened in which
+	 * Oosidian sets the cursor to just after the frontmatter.
+	 * 
+	 * @param update 
+	 * @returns true if this update is just Obsidian setting the initial selection
+	 */
+	private isUpdateNewView(update: ViewUpdate): boolean {
+		//we take the start state because wen a new doc is opened, the view defaults to after the yaml
+		const selection = update.startState.selection.main;
+	
+		const isInitialSelection =
+			selection.from === 0 &&
+			selection.to === 0;
+	
+			const noUserEvents = update.transactions.every(tx =>
+				!tx.isUserEvent?.("select") &&
+				!tx.isUserEvent?.("input") &&
+				!tx.isUserEvent?.("scroll")
+			);
+	
+		const noDocChange = !update.docChanged;
+		return isInitialSelection && noUserEvents && noDocChange;
+	}
 	handleEditorViewUpdate(update: ViewUpdate) {
-		if(!update.selectionSet) return;
-        if(this.cursorSelectionsEqual(update.state.selection, update.startState.selection)) return;
+		if(!update.selectionSet||this.isUpdateNewView(update)) return;
+		if(this.cursorSelectionsEqual(update.state.selection, update.startState.selection)) return;
 		const path = this.activeFilePath();
-		const state = {
-			cursor: stateSelectionToCursor(update.state.selection),
-			scroll: scrollFromView(update.view)
-		};
-		this.updateEphemeralState(path, state);
+
+		this.updateEphemeralState(path, {cursor: stateSelectionToCursor(update.view)});
 		this.interval.trigger();
 	}
 	handleEditorViewScroll(event: Event, view: EditorView) {
 		const path = this.activeFilePath();
-		if (!this.db.has(path)) return this.addEntryFromView(path, view);
-		const state = this.db.get(path);
-		const scrollRatio = scrollFromView(view);
-		state.scroll=scrollRatio;
+		this.updateEphemeralState(path, {scroll: scrollFromView(view)});
 		this.interval.trigger();
 	}
-	addEntryFromView(path: string,view: EditorView) {
-		const state = {
-			cursor: stateSelectionToCursor(view.state.selection),
-			scroll: scrollFromView(view)
-		}
-		this.updateEphemeralState(path, state);
-	}
-	
-	async restoreEphemeralState() {
-		const fileName = this.plugin.app.workspace.getActiveFile()?.path;
-		if (!fileName) return;
-		const activeLeaf = this.plugin.app.workspace.getMostRecentLeaf()
+	private async restoreEphemeralState(file?: TFile) {
+		const fileName = file?.path??this.plugin.app.workspace.getActiveFile()?.path;
+		if (fileName && this.loadingFile && this.lastLoadedFileName == fileName) //if already started loading
+			return;
+		
+		const activeLeaf = this.plugin.app.workspace.getMostRecentLeaf();
 		//@ts-expect-error
 		if (activeLeaf && this.loadedLeafIdList.includes(activeLeaf.id + ":" + activeLeaf.getViewState().state.file))
 			return;
-		this.loadingFile = true;
-		const st:EphemeralState = this.db.get(fileName);
-		console.log("Restoring cursor position for file: ", fileName, st);
-		if (st) {
-			// Don't scroll when a link scrolls and highlights text
-			// i.e. if file is open by links like [link](note.md#header) and wikilinks
-			// See #10, #32, #46, #51
-			const containsFlashingSpan = this.plugin.app.workspace.containerEl.querySelector("span.is-flashing");
-
-			if (!containsFlashingSpan) {
-				await this.delay(10);
-				this.setEphemeralState(st);
+		
+		this.loadedLeafIdList = []
+		this.plugin.app.workspace.iterateAllLeaves((leaf) => {
+			if (leaf.getViewState().type ==="markdown") {
+				//@ts-expect-error
+				this.loadedLeafIdList.push(leaf.id + ":" +  leaf.getViewState().state.file)
 			}
+		});
+		
+		this.loadingFile = true;
+
+		if (this.lastLoadedFileName != fileName) {
+			this.lastEphemeralState = {}
+			this.lastLoadedFileName = fileName;
+			
+			let st:EphemeralState
+
+			if (fileName) {
+				st = this.db.get(fileName);
+				if (st) {
+					//waiting for load note
+					await this.delay(this.plugin.settings.delayAfterFileOpening)
+
+					// Don't scroll when a link scrolls and highlights text
+					// i.e. if file is open by links like [link](note.md#header) and wikilinks
+					// See #10, #32, #46, #51
+					const containsFlashingSpan = this.plugin.app.workspace.containerEl.querySelector("span.is-flashing");
+
+					if (!containsFlashingSpan) {
+						await this.delay(10)
+						this.setEphemeralState(st);
+					}
+				}
+			} 
+			this.lastEphemeralState = st;
 		}
-		this.lastEphemeralState = st;
 
 		this.loadingFile = false;
 	}
-	setEphemeralState(state: EphemeralState) {
-		//@ts-expect-error
-		const view = (app.workspace.activeEditor?.editor as any).cm as EditorView;
-		if (!view) return;
-		view.dispatch({
-			selection: EditorSelection.range(state.cursor.from, state.cursor.to),
-			scrollIntoView: true,
-		});
-		console.log("Setting cursor position for file: ", view);
-		/*
-		if (state.cursor) {
-			const editor = view?.editor;
-			if (editor) {
-				const from: EditorPosition= {  };
-				editor.setSelection(from, state.cursor.to);
-			}
+	private scrollPercentToPixel(scroll: number,el: HTMLElement) {
+		const maxScrollTop = el.scrollHeight - el.clientHeight;
+		return scroll * maxScrollTop;
+	}
+	setEphemeralState(state: EphemeralState,leaf?: WorkspaceLeaf) {
+		leaf = leaf||this.plugin.app.workspace.getMostRecentLeaf();
+		if (state.scroll&&leaf.view instanceof MarkdownView) {
+			//@ts-expect-error
+			const scrollEl = leaf.view.editor.cm?.scrollDOM
+			if (!scrollEl) return;
+			state.scroll = this.scrollPercentToPixel(state.scroll,scrollEl);
 		}
-
-		if (view && state.scroll) {
-			view.setEphemeralState(state);
-			// view.previewMode.applyScroll(state.scroll);
-			// view.sourceMode.applyScroll(state.scroll);
-		}*/
+		// for now i cant get the scroll to work in the editor view, so i will just set the cursor position
+		state.scroll = undefined
+		leaf.setEphemeralState(state);
+		if(!(leaf.view instanceof MarkdownView)) return;
+		leaf.view.editor.scrollIntoView(state.cursor,true);
 	}
 	private async writeDb() {
 		const data:typeof this.plugin.settings = await this.plugin.loadData() || {};
@@ -185,9 +239,9 @@ class EventBasedInterval {
 	IDLE_TIMEOUT = 10000;
 	lastEvent = 0;
 	intervalId: number | null = null;
-	job?: unknown;
 	outdated = false;
-	action: (eventData?: unknown) => void;
+	job?: unknown;
+	action: (job: typeof this.job) => void;
 
 	constructor(action: (eventData?: unknown) => void, config: { INTERVAL_DELAY?: number; IDLE_TIMEOUT?: number } = {}) {
 		this.action = action;
@@ -204,6 +258,7 @@ class EventBasedInterval {
 			this.intervalId = window.setInterval(() => this.tick(), this.INTERVAL_DELAY);
 		}
 	}
+
 
 	private tick() {
 		if (!this.outdated) return;

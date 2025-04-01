@@ -1,6 +1,6 @@
 import { Plugin } from "obsidian";
 import { DEFAULT_SETTINGS, MosheUserExperienceSettings } from "./obsidian/settings";
-import { EditorSelection, Extension, Prec } from "@codemirror/state";
+import { Extension, Prec } from "@codemirror/state";
 import { EditorView, ViewUpdate } from "@codemirror/view";
 import { RememberCursorPosition } from "./rememberCursorPosition";
 import { arrayToMap } from "./utils/types";
