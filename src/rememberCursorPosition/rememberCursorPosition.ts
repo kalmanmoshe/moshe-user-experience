@@ -1,12 +1,12 @@
 
-import MosheUserExperience from "./main";
+import MosheUserExperience from "../main";
 import { EditorState } from "@codemirror/state";
 import { ViewUpdate } from "@codemirror/view";
-import { mapToArray,  } from "./utils/types";
+import { mapToArray,  } from "../utils/types";
 import { EditorView} from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
 import { MarkdownView, TFile, WorkspaceLeaf } from "obsidian";
-import { kill } from "process";
+import { RememberCursorPositionSettings } from "./settings";
 
 export type Cursor = { 
 	from: {ch: number,line: number}, 
@@ -58,10 +58,12 @@ export class RememberCursorPosition {
 	outdated: boolean;
 	interval: EventBasedInterval;
 	lastLoadedFileName: string | null = null;
+	settings: RememberCursorPositionSettings
 	constructor(plugin: MosheUserExperience,db?: Map<string, EphemeralState>) {
 		this.plugin = plugin;
+		this.settings = plugin.settings.rememberCursorPosition;
 		this.db = db||new Map();
-		this.interval = new EventBasedInterval(() => this.writeDb(), {});
+		this.interval = new EventBasedInterval(() => this.writeDb(), {INTERVAL_DELAY: this.settings.saveTimer});
 		this.plugin.app.workspace.onLayoutReady(() => {
 			this.restoreEphemeralState();
 			this.registerVaultEvents();
@@ -111,7 +113,6 @@ export class RememberCursorPosition {
 			if ("cursor" in state) obj.cursor = state.cursor;
 			if ("scroll" in state) obj.scroll = state.scroll;
 		}
-		console.log("updateEphemeralState", path, obj);
 		this.db.set(path, obj||state);
 	}
 	private activeFilePath() {
@@ -186,7 +187,7 @@ export class RememberCursorPosition {
 				st = this.db.get(fileName);
 				if (st) {
 					//waiting for load note
-					await this.delay(this.plugin.settings.delayAfterFileOpening)
+					await this.delay(this.settings.delayAfterFileOpening)
 
 					// Don't scroll when a link scrolls and highlights text
 					// i.e. if file is open by links like [link](note.md#header) and wikilinks
@@ -224,7 +225,7 @@ export class RememberCursorPosition {
 	}
 	private async writeDb() {
 		const data:typeof this.plugin.settings = await this.plugin.loadData() || {};
-		data.rememberCursorPosition = {EphemeralState: mapToArray<string,EphemeralState>(this.db), windowLayout: null};
+		data.rememberCursorPosition.state = {EphemeralState: mapToArray<string,EphemeralState>(this.db), windowLayout: null};
 		await this.plugin.saveData(data);
 	}
 	async delay(ms: number) {
@@ -289,73 +290,3 @@ class EventBasedInterval {
 	}
 }
 
-
-
-
-
-
-
-
-
-
-/*
-
-
-class SettingTab extends PluginSettingTab {
-	plugin: MosheUserExperience;
-
-	constructor(app: App, plugin: MosheUserExperience) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const { containerEl } = this;
-
-		containerEl.empty();
-
-		containerEl.createEl("h2", { text: "Remember cursor position - Settings" });
-
-		new Setting(containerEl)
-			.setName("Data file name")
-			.setDesc("Save positions to this file")
-			.addText((text) =>
-				text
-					.setPlaceholder("Example: cursor-positions.json")
-					.setValue(this.plugin.settings.dbFileName)
-					.onChange(async (value) => {
-						this.plugin.settings.dbFileName = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Delay after opening a new note")
-			.setDesc(
-				"This plugin shouldn't scroll if you used a link to the note header like [link](note.md#header). If it did, then increase the delay until everything works. If you are not using links to page sections, set the delay to zero (slider to the left). Slider values: 0-300 ms (default value: 100 ms)."
-			)
-			.addSlider((text) =>
-				text
-					.setLimits(0, 300, 10)
-					.setValue(this.plugin.settings.delayAfterFileOpening)
-					.onChange(async (value) => {
-						this.plugin.settings.delayAfterFileOpening = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Delay between saving the cursor position to file")
-			.setDesc(
-				"Useful for multi-device users. If you don't want to wait until closing Obsidian to the cursor position been saved."			)
-			.addSlider((text) =>
-				text
-					.setLimits(SAFE_DB_FLUSH_INTERVAL, SAFE_DB_FLUSH_INTERVAL * 10, 10)
-					.setValue(this.plugin.settings.saveTimer)
-					.onChange(async (value) => {
-						this.plugin.settings.saveTimer = value;
-						await this.plugin.saveSettings();
-					})
-			);
-	}
-}*/

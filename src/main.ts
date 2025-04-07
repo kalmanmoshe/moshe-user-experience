@@ -2,13 +2,18 @@ import { Plugin } from "obsidian";
 import { DEFAULT_SETTINGS, MosheUserExperienceSettings } from "./obsidian/settings";
 import { Extension, Prec } from "@codemirror/state";
 import { EditorView, ViewUpdate } from "@codemirror/view";
-import { RememberCursorPosition } from "./rememberCursorPosition";
+import { RememberCursorPosition } from "./rememberCursorPosition/rememberCursorPosition";
 import { arrayToMap } from "./utils/types";
+import { Columns } from "./columns/columns";
+
 
 export default class MosheUserExperience extends Plugin{
     settings: MosheUserExperienceSettings;
     editorExtensions: Extension[]=[];
-    extensions: Map<string, RememberCursorPosition>=new Map();
+    extensions: {
+        rememberCursorPosition?: RememberCursorPosition, 
+        columns?: Columns
+    }={};
     async onload(){
         console.log("Moshe User Experience loaded");
         await this.loadSettings();
@@ -16,9 +21,10 @@ export default class MosheUserExperience extends Plugin{
     }
     
     initializeExtensions(){
-        this.extensions =new Map([
-            ["rememberCursorPosition", new RememberCursorPosition(this,arrayToMap(this.settings.rememberCursorPosition.EphemeralState))]
-        ]);
+        this.extensions = {
+            rememberCursorPosition: new RememberCursorPosition(this,arrayToMap(this.settings.rememberCursorPosition.state.EphemeralState)),
+            columns: new Columns(this)
+        };
     }
     private async loadSettings() {
         const data = await this.loadData();
@@ -50,13 +56,18 @@ export default class MosheUserExperience extends Plugin{
 
 		this.registerEditorExtension(this.editorExtensions.flat());
 	}
-    private handleEditorViewUpdate(update: ViewUpdate) {        
-        this.extensions.get("rememberCursorPosition")?.handleEditorViewUpdate(update);
+    private handleEditorViewUpdate(update: ViewUpdate) {
+        const {rememberCursorPosition} = this.extensions;
+        if(rememberCursorPosition){
+            rememberCursorPosition.handleEditorViewUpdate(update);
+        }
     }
 
     private handleEditorViewScroll(event: Event, view: EditorView) {
-        this.extensions.get("rememberCursorPosition")?.handleEditorViewScroll(event, view);
+        const rememberCursorPosition: RememberCursorPosition | undefined = this.extensions.rememberCursorPosition;
+        if(rememberCursorPosition){
+            rememberCursorPosition.handleEditorViewScroll(event, view);
+        }
     }
 }
-
 

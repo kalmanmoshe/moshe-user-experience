@@ -1,16 +1,16 @@
-import { EphemeralState, WindowLayout } from "src/rememberCursorPosition";
+/* eslint-disable @typescript-eslint/no-unsafe-declaration-merging */
+import { ColumnsSettings, DEFAULT_COLUMNS_SETTINGS } from "src/columns/settings";
+
+import { DEFAULT_REMEMBER_CURSOR_POSITION_SETTINGS, RememberCursorPositionSettings } from "src/rememberCursorPosition/settings";
 
 
 export interface MosheUserExperienceSettings{
-	delayAfterFileOpening: 100,
-	saveTimer: 5000,
-	rememberCursorPosition:
-		{ EphemeralState: Array<[string,EphemeralState]>, windowLayout: WindowLayout }
+	rememberCursorPosition?: RememberCursorPositionSettings
+	columns?: ColumnsSettings
 }
 export const DEFAULT_SETTINGS: MosheUserExperienceSettings = {
-	delayAfterFileOpening: 100,
-	saveTimer: 5000,
-	rememberCursorPosition: { EphemeralState: [], windowLayout: null }
+	rememberCursorPosition: DEFAULT_REMEMBER_CURSOR_POSITION_SETTINGS,
+	columns: DEFAULT_COLUMNS_SETTINGS 
 };
 
 
