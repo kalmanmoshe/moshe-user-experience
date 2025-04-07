@@ -117,16 +117,40 @@ const parseDirtyNumber = (num: string) => {
 		.filter((char: string) => "0123456789.".contains(char))
 		.join(""))
 }
+function parseAttributesFromElement (el: HTMLElement){
+	
+	// Convert attributes to Record<string, string>
+	const attributes: Record<string, string> = {};
+	for (const attr of Array.from(el.attributes)) {
+		if (attr.name === "style") continue;
+		attributes[attr.name] = attr.value;
+	}
+  
+	// Convert inline styles to Record<string, string>
+	const styles: Record<string, string> = {};
+	for (let i = 0; i < el.style.length; i++) {
+		const prop = el.style[i];
+		styles[prop] = el.style.getPropertyValue(prop);
+	}
+  
+	return {attributes, styles,};
+}
+
 function parseAttributesFromString(str: string) {
 	const fakeHTML = `<div ${str}></div>`;
 	const doc = new DOMParser().parseFromString(fakeHTML, "text/html");
 	const parsedDiv = doc.body.firstChild;
-	if (!parsedDiv || !(parsedDiv instanceof HTMLElement)) return [];
-	return Array.from(parsedDiv.attributes).map(attr => ({
-		name: attr.name,
-		value: attr.value
-	}));
+
+	if (!parsedDiv || !(parsedDiv instanceof HTMLElement)) {
+		return {
+			attributes: {},
+			styles: {},
+		};
+	}
+	return parseAttributesFromElement(parsedDiv);
 }
+  
+
 
 export class Columns {
 	pluglin: MosheUserExperience;
@@ -259,10 +283,10 @@ export class Columns {
 
 	async columnBlockProcessor(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) {
 		const { source: content, settings } = findSettings(source);
-		const attrs = Object.fromEntries(parseAttributesFromString(settings).map(a => [a.name, a.value]));
+		const attrs = parseAttributesFromString(settings)
 		const rows = parseRows(content);
 		const srcPath = ctx.sourcePath;
-	
+		console.log("attrs",attrs,)
 		const applyScrollHeight = async (
 			parent: HTMLElement,
 			height: string,
@@ -299,32 +323,40 @@ export class Columns {
 			const render = MarkdownRenderer.renderMarkdown(row, temp, srcPath, renderChild);
 	
 			const parent = el.createEl("div", { cls: "columnParent" });
-			console.log("temp.children", parent, attrs)
+			console.log("temp.children", temp.children)
+
 			Array.from(temp.children).forEach((child: HTMLElement) => {
 				const wrapper = parent.createEl("div", { cls: "columnChild" });
 				ctx.addChild(new MarkdownRenderChild(wrapper));
+				
+				// STEP 1: Transfer everything from child
+				wrapper.classList.add(...Array.from(child.classList));
+				for (const attr of Array.from(child.attributes)) {
+					wrapper.setAttribute(attr.name, attr.value);
+				}
+				Object.assign(wrapper.style, child.style);
+				wrapper.innerHTML = child.innerHTML;
 			
-				// Start with default span styles
-				const childAttrs = { ...this.generateFlexStyleFromSpan(this.settings.defaultSpan) };
-			
-				// Check if it's a custom column block and override styles if provided inline
+				// STEP 2: If block-language-columnmd, transfer inner as well
 				if (child.classList.contains("block-language-" + COLUMNMD)) {
 					const inner = child.firstElementChild as HTMLElement;
-					console.log(inner,inner.style.flexGrow)
-					if (inner?.style.flexGrow) {
-						const inlineAttrs: Record<string, string> = {};
+					if (inner) {
+						wrapper.classList.add(...Array.from(inner.classList));
 						for (const attr of Array.from(inner.attributes)) {
-							inlineAttrs[attr.name] = attr.value;
+							wrapper.setAttribute(attr.name, attr.value);
 						}
-						console.log("inline attrs", inner, inlineAttrs)
-						Object.assign(childAttrs, inlineAttrs);
+						Object.assign(wrapper.style, inner.style);
+						wrapper.innerHTML = inner.innerHTML;
 					}
 				}
-				console.log("child attrs", childAttrs,)
-				this.applyAttributes(wrapper, childAttrs);
-				wrapper.appendChild(child);
-				this.processChild(child);
+			
+				// STEP 3: Remove the original child — it's no longer needed
+				child.remove();
+			
+				this.processChild(wrapper); // process the final wrapper instead
 			});
+			
+			
 	
 			// Aggregate and apply parent styles
 			const parentStyles: Record<string, string> = Object.assign({},attrs);
@@ -373,16 +405,19 @@ export class Columns {
 		for (const key in attributes) {
 			const value = attributes[key].toString();
 	
-			// Apply to style if it's a CSS property
-			if (key in el.style) {
+			if (key in el.style && typeof (el.style as any)[key] !== "function") {
+				console.log(`apling ${key} as style`);
+				// ✅ Apply as a CSS style
 				(el.style as any)[key] = value;
-			}
-			// Otherwise treat it as an HTML attribute
-			else {
+			} else {
+				console.log(`apling ${key} as attribute`,key+"=");
+				// ✅ Fallback: apply as HTML attribute
 				el.setAttribute(key, value);
 			}
 		}
+		console.log(el)
 	}
+	
 	
 	private addEditorCommands() {/*
 		this.pluglin.addCommand({
