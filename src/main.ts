@@ -1,4 +1,4 @@
-import { Plugin } from "obsidian";
+import { Editor, MarkdownView, Plugin } from "obsidian";
 import { DEFAULT_SETTINGS, MosheUserExperienceSettings } from "./obsidian/settings";
 import { Extension, Prec } from "@codemirror/state";
 import { EditorView, ViewUpdate } from "@codemirror/view";

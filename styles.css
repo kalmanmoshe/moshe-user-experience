@@ -104,3 +104,7 @@ div[data-callout=col].callout > div.callout-content > div[data-callout$="-10"].c
 }
 
 /* src/styles.css */
+.HyperMD-codeblock[dir="rtl"],
+.HyperMD-codeblock[dir="rtl"] * {
+  direction: rtl !important;
+}

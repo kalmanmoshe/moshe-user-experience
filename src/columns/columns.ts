@@ -117,16 +117,31 @@ const parseDirtyNumber = (num: string) => {
 		.filter((char: string) => "0123456789.".contains(char))
 		.join(""))
 }
-function parseAttributesFromString(str: string) {
+function parseAttributesFromElement(el: HTMLElement) {
+	// Convert attributes to Record<string, string>
+	const attributes: Record<string, string> = {};
+	for (const attr of Array.from(el.attributes)) {
+		attributes[attr.name] = attr.value;
+	}
+  
+	// Convert inline styles to Record<string, string>
+	for (let i = 0; i < el.style.length; i++) {
+		const prop = el.style[i];
+		attributes[prop] = el.style.getPropertyValue(prop);
+	}
+	delete attributes["style"]
+	return attributes
+}
+function parseAttributesFromString(str: string){
 	const fakeHTML = `<div ${str}></div>`;
 	const doc = new DOMParser().parseFromString(fakeHTML, "text/html");
 	const parsedDiv = doc.body.firstChild;
-	if (!parsedDiv || !(parsedDiv instanceof HTMLElement)) return [];
-	return Array.from(parsedDiv.attributes).map(attr => ({
-		name: attr.name,
-		value: attr.value
-	}));
+  
+	if (!parsedDiv || !(parsedDiv instanceof HTMLElement)) return {};
+  
+	return parseAttributesFromElement(parsedDiv);
 }
+  
 
 export class Columns {
 	pluglin: MosheUserExperience;
@@ -256,10 +271,10 @@ export class Columns {
 			(el: {name: string}) => el.name !== "col" && el.name !== "col-md"
 		);
 	}
-
+	// i need to alow for special exsimshins for BORDERSETTINGS & COLSETTINGS
 	async columnBlockProcessor(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) {
 		const { source: content, settings } = findSettings(source);
-		const attrs = Object.fromEntries(parseAttributesFromString(settings).map(a => [a.name, a.value]));
+		const attrs = parseAttributesFromString(settings);
 		const rows = parseRows(content);
 		const srcPath = ctx.sourcePath;
 	
@@ -303,24 +318,15 @@ export class Columns {
 			Array.from(temp.children).forEach((child: HTMLElement) => {
 				const wrapper = parent.createEl("div", { cls: "columnChild" });
 				ctx.addChild(new MarkdownRenderChild(wrapper));
-				const childAttrs = Object.assign({},this.generateFlexStyleFromSpan(this.settings.defaultSpan))
 				// Use generated default flex styles
-	
+				wrapper.innerHTML = child.innerHTML;
 				// Copy inline flex styles from special code blocks
 				if (child.classList.contains("block-language-" + COLUMNMD)) {
 					const inner = child.childNodes[0] as HTMLElement;
-					console.log("inner",inner)
-					if (inner?.style.flexGrow) {
-						this.applyAttributes(wrapper, {
-							flexGrow: inner.style.flexGrow,
-							flexBasis: inner.style.flexBasis,
-							width: inner.style.flexBasis
-						});
-					}
+					this.applyAttributes(wrapper,parseAttributesFromElement(inner))
 					wrapper.innerHTML = inner.innerHTML;
-					console.log("wrapper",wrapper)
 				}
-				
+				child.remove();
 				this.processChild(child);
 			});
 	
@@ -330,7 +336,6 @@ export class Columns {
 				const scrollStyles = await applyScrollHeight(parent, attrs.height, render);
 				Object.assign(parentStyles, scrollStyles);
 			}
-			console.log("parent styles", parentStyles, attrs);
 			this.applyAttributes(parent, parentStyles);
 			this.applyPotentialBorderStyling(attrs, parent);
 		};
@@ -343,8 +348,8 @@ export class Columns {
 	
 	markdownColumnCodeBlockProcessor(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext){
 		const { source: content, settings } = findSettings(source);
-		const attributes = Object.fromEntries(parseAttributesFromString(settings).map(a => [a.name, a.value]));
-
+		const attributes = parseAttributesFromString(settings);
+		console.warn("attrs", attributes)
 		const sourcePath = ctx.sourcePath;
 		const child = el.createDiv();
 		const renderChild = new MarkdownRenderChild(child)
@@ -365,7 +370,6 @@ export class Columns {
 		}
 		this.applyPotentialBorderStyling(attributes, child);
 		this.applyAttributes(child, childAttributes)
-		console.log("child", child, childAttributes)
 	}
 	applyAttributes(el: HTMLElement, attributes: Record<string, string | number>) {
 		for (const key in attributes) {
