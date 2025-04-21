@@ -132,16 +132,47 @@ function parseAttributesFromElement(el: HTMLElement) {
 	delete attributes["style"]
 	return attributes
 }
-function parseAttributesFromString(str: string){
+function parseAttributesFromString(str: string): Record<string, string> {
 	const fakeHTML = `<div ${str}></div>`;
 	const doc = new DOMParser().parseFromString(fakeHTML, "text/html");
 	const parsedDiv = doc.body.firstChild;
-  
 	if (!parsedDiv || !(parsedDiv instanceof HTMLElement)) return {};
-  
-	return parseAttributesFromElement(parsedDiv);
+	const attributes: Record<string, string> = parseAttributesFromElement(parsedDiv);
+	const fixedAttributes: Record<string, string> = {};
+	for (const key in attributes) {
+		const lowerStr = str.toLowerCase();
+		const index = lowerStr.indexOf(key);
+		if (index === -1) {
+			throw new Error("Key not found in original string: " + key);
+		}
+		// Recover original key casing
+		const originalKey = str.substring(index, index + key.length).trim();
+		fixedAttributes[originalKey] = attributes[key];
+	}
+
+	return fixedAttributes;
+}
+function toPascalCase(str: string) {
+	return str
+		.split("-")
+		.map((word,index) => index===0?word:word.charAt(0).toUpperCase() + word.slice(1))
+		.join("");
 }
   
+function normalizeAttributesToObj(attributes: Record<string, string | number>): Record<string, string> {
+	const normalized: Record<string, string> = {};
+	for (const key in attributes) {
+		const value = String(attributes[key]);
+		if (key.includes("-")) {
+			const newKey = toPascalCase(key);
+			normalized[newKey] = value;
+		} else {
+			normalized[key] = value;
+		}
+	}
+
+	return normalized;
+}
 
 export class Columns {
 	pluglin: MosheUserExperience;
@@ -349,7 +380,6 @@ export class Columns {
 	markdownColumnCodeBlockProcessor(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext){
 		const { source: content, settings } = findSettings(source);
 		const attributes = parseAttributesFromString(settings);
-		console.warn("attrs", attributes)
 		const sourcePath = ctx.sourcePath;
 		const child = el.createDiv();
 		const renderChild = new MarkdownRenderChild(child)
@@ -372,16 +402,14 @@ export class Columns {
 		this.applyAttributes(child, childAttributes)
 	}
 	applyAttributes(el: HTMLElement, attributes: Record<string, string | number>) {
+		attributes = normalizeAttributesToObj(attributes)
 		for (const key in attributes) {
 			const value = attributes[key].toString();
-	
-			// Apply to style if it's a CSS property
 			if (key in el.style) {
 				(el.style as any)[key] = value;
 			}
-			// Otherwise treat it as an HTML attribute
-			else {
-				el.setAttribute(key, value);
+			else if (key in el) {
+				(el as any)[key] = value;
 			}
 		}
 	}

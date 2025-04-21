@@ -103,5 +103,10 @@ div[data-callout=col].callout > div.callout-content > div[data-callout$="-10"].c
   --obsidian-columns-custom-span: 10 ;
 }
 
-/* src/styles.css */
+/* src/rtl/rtl.css */
+.HyperMD-codeblock[dir=rtl],
+.HyperMD-codeblock[dir=rtl] * {
+  direction: rtl !important;
+}
 
+/* src/styles.css */
