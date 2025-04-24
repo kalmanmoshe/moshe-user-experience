@@ -109,4 +109,22 @@ div[data-callout=col].callout > div.callout-content > div[data-callout$="-10"].c
   direction: rtl !important;
 }
 
+/* src/image.css */
+.markdown-preview-view p:has(> img:only-child) {
+  text-align: center;
+}
+.markdown-preview-view p:has(> img:only-child) img {
+  display: inline-block;
+  margin: 1em auto;
+  max-width: 100%;
+}
+.cm-line:has(> img:only-child) {
+  text-align: center;
+}
+.cm-line:has(> img:only-child) img {
+  display: inline-block;
+  margin: 1em auto;
+  max-width: 100%;
+}
+
 /* src/styles.css */

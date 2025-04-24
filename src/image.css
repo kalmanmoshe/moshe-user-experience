@@ -1,0 +1,22 @@
+/* Preview mode: center images that are alone in a paragraph */
+.markdown-preview-view p:has(> img:only-child) {
+    text-align: center;
+  }
+  
+  .markdown-preview-view p:has(> img:only-child) img {
+    display: inline-block;
+    margin: 1em auto;
+    max-width: 100%;
+  }
+  
+  /* Live Preview / editor mode */
+  .cm-line:has(> img:only-child) {
+    text-align: center;
+  }
+  
+  .cm-line:has(> img:only-child) img {
+    display: inline-block;
+    margin: 1em auto;
+    max-width: 100%;
+  }
+  
