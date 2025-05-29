@@ -115,10 +115,8 @@ export class RememberCursorPosition {
 		}
 		this.db.set(path, obj||state);
 	}
-	private activeFilePath() {
-		const path = this.plugin.app.workspace.getActiveFile()?.path;
-		if (!path) throw new Error("No active file");
-		return path;
+	private activeFilePath(shouldThrow = true): string | undefined {
+		return this.plugin.app.workspace.getActiveFile()?.path;
 	}
 	/**
 	 * Filters out view updates triggered when a new file is opened in which
@@ -147,13 +145,15 @@ export class RememberCursorPosition {
 	handleEditorViewUpdate(update: ViewUpdate) {
 		if(!update.selectionSet||this.isUpdateNewView(update)) return;
 		if(this.cursorSelectionsEqual(update.state.selection, update.startState.selection)) return;
-		const path = this.activeFilePath();
+		const path = this.activeFilePath(false);
+		if (!path) return;
 
 		this.updateEphemeralState(path, {cursor: stateSelectionToCursor(update.view)});
 		this.interval.trigger();
 	}
 	handleEditorViewScroll(event: Event, view: EditorView) {
 		const path = this.activeFilePath();
+		if (!path) return;
 		this.updateEphemeralState(path, {scroll: scrollFromView(view)});
 		this.interval.trigger();
 	}

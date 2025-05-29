@@ -1,11 +1,10 @@
-import { Editor, MarkdownView, Plugin ,ViewCreator} from "obsidian";
+import {  Plugin } from "obsidian";
 import { DEFAULT_SETTINGS, MosheUserExperienceSettings } from "./obsidian/settings";
 import { Extension, Prec } from "@codemirror/state";
 import { EditorView, ViewUpdate } from "@codemirror/view";
 import { RememberCursorPosition } from "./rememberCursorPosition/rememberCursorPosition";
 import { arrayToMap } from "./utils/types";
 import { Columns } from "./columns/columns";
-import * as CodeMirror from "codemirror";
 
 
 export default class MosheUserExperience extends Plugin{
@@ -19,6 +18,7 @@ export default class MosheUserExperience extends Plugin{
         console.log("Moshe User Experience loaded");
         await this.loadSettings();
         this.initializeExtensions();
+        
     }
     
     initializeExtensions(){

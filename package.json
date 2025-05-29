@@ -6,7 +6,8 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"version": "node version-bump.mjs && git add manifest.json versions.json"
+		"version": "node version-bump.mjs && git add manifest.json versions.json",
+		"update-utils": "npm uninstall obsidian-dev-utils && npm install kalmanmoshe/obsidian-dev-utils#main"
 	},
 	"keywords": [],
 	"author": "",
@@ -41,6 +42,7 @@
 		"async": "^3.2.6",
 		"localforage": "^1.10.0",
 		"mathjax": "^3.2.2",
+		"obsidian-dev-utils": "github:kalmanmoshe/obsidian-dev-utils#main",
 		"set.prototype.difference": "^1.1.5",
 		"set.prototype.intersection": "^1.1.5",
 		"valibot": "^0.24.1",

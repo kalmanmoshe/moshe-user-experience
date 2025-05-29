@@ -2,6 +2,7 @@ import { MarkdownRenderChild, MarkdownRenderer,  MarkdownPostProcessorContext, E
 //import { SettingItem, display, loadSettings, saveSettings, createSetting } from "obsidian-settings/settings"
 import MosheUserExperience from "src/main";
 import { ColumnsSettings } from "./settings";
+import { turnOffSyntaxHighlighting, turnOnSyntaxHighlighting } from "obsidian-dev-utils";
 const NAME = "Obsidian Columns"
 const COLUMNNAME = "col"
 const COLUMNMD = COLUMNNAME + "-md"
@@ -216,8 +217,7 @@ export class Columns {
 		//this.pluglin.addSettingTab(new ObsidianColumnsSettings(this.pluglin.app, this));
 		this.setCodeblocks()
 		this.addEditorCommands()
-		this.addSyntaxHighlighting()
-	
+		turnOnSyntaxHighlighting([COLUMNNAME, COLUMNMD]);
 
 		const processList = (element: Element, context: MarkdownPostProcessorContext) => {
 			for (const child of Array.from(element.children)) {
@@ -274,33 +274,6 @@ export class Columns {
 	setCodeblocks(){
 		this.pluglin.registerMarkdownCodeBlockProcessor(COLUMNNAME, this.columnBlockProcessor.bind(this))
 		this.pluglin.registerMarkdownCodeBlockProcessor(COLUMNMD, this.markdownColumnCodeBlockProcessor.bind(this))
-	}
-
-	addSyntaxHighlighting() {
-		// @ts-ignore
-		if (!window.CodeMirror || !Array.isArray(window.CodeMirror.modeInfo)) return;
-	
-		// @ts-ignore
-		const modeInfo = window.CodeMirror.modeInfo;
-		const modesToAdd = [
-			{ name: "col", mime: "text/x-markdown", mode: "markdown" },
-			{ name: "col-md", mime: "text/x-markdown", mode: "markdown" },
-		];
-	
-		for (const mode of modesToAdd) {
-			if (!modeInfo.some((el: {name: string}) => el.name === mode.name)) {
-				modeInfo.push(mode);
-			}
-		}
-	}
-	removeSyntaxHighlighting() {
-		//@ts-ignore
-		if (!window.CodeMirror || !Array.isArray(window.CodeMirror.modeInfo)) return;
-	
-		// @ts-ignore
-		window.CodeMirror.modeInfo = window.CodeMirror.modeInfo.filter(
-			(el: {name: string}) => el.name !== "col" && el.name !== "col-md"
-		);
 	}
 	// i need to alow for special exsimshins for BORDERSETTINGS & COLSETTINGS
 	async columnBlockProcessor(source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) {
@@ -503,7 +476,7 @@ export class Columns {
 	}
 
 	onunload() {
-		
+		turnOffSyntaxHighlighting([COLUMNNAME, COLUMNMD]);
 	}
 
 	async loadSettings() {
