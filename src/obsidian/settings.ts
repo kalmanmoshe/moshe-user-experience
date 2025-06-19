@@ -1,19 +1,18 @@
-/* eslint-disable @typescript-eslint/no-unsafe-declaration-merging */
-import { ColumnsSettings, DEFAULT_COLUMNS_SETTINGS } from "src/columns/settings";
 
-import { DEFAULT_REMEMBER_CURSOR_POSITION_SETTINGS, RememberCursorPositionSettings } from "src/rememberCursorPosition/settings";
-
-
-export interface MosheUserExperienceSettings{
-	rememberCursorPosition?: RememberCursorPositionSettings
-	columns?: ColumnsSettings
+export interface ColumnsSettings{
+	wrapSize: number
+	defaultSpan: number
 }
-export const DEFAULT_SETTINGS: MosheUserExperienceSettings = {
-	rememberCursorPosition: DEFAULT_REMEMBER_CURSOR_POSITION_SETTINGS,
-	columns: DEFAULT_COLUMNS_SETTINGS 
+export const DEFAULT_SETTINGS: ColumnsSettings = {
+	wrapSize: 100,
+	defaultSpan: 1,
 };
 
 
-export class MosheUserExperienceSettings{
-
-}
+export const COLUMN_NAME = "col";
+export const COLUMN_MD = COLUMN_NAME + "-md";
+export const TOKEN = "!!!";
+export const SETTINGS_DELIM = "===";
+export const MIN_WIDTH_VAR_NAME = "--obsidian-columns-min-width";
+export const DEF_SPAN_VAR_NAME = "--obsidian-columns-def-span";
+export const CODE_BLOCK_FENCE = "`";
